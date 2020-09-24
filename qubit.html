@@ -1,0 +1,188 @@
+<html>
+
+<canvas id="my-canvas" width="400" height="400"></canvas>
+<input type="range" min="0" max="100" value="50" class="slider" id="alpha-slider" onchange="updateAlpha()">
+<input type="range" min="1" max="360" value="90" class="slider" id="phase-slider" onchange="updatePhase()">
+
+<script>
+    const canvas = document.querySelector('#my-canvas');
+    const ctx = canvas.getContext('2d');
+    const alphaSlider = document.querySelector('#alpha-slider');
+    const alphaSliderMax = 100;
+    const phaseSlider = document.querySelector('#phase-slider');
+
+    class Complex {
+        constructor(re, im) {
+            this.re = re;
+            this.im = im;
+        }
+        get conj() {
+            return new Complex(this.re, -this.im);
+        }
+        get mod_sqr() {
+            // return this.times(this.conj).re;
+            return (this.re*this.re) - (-this.im*this.im);
+        }
+        add(other) {
+            if (!(other instanceof Complex)) { other = new Complex(other,0); }
+            return new Complex(this.re + other.re, this.im + other.im);
+        }
+        times(other) {
+            // console.log('other', other);
+            if (!(other instanceof Complex)) { other = new Complex(other,0); }
+            // console.log('other', other);
+            return new Complex(
+                this.re*other.re - this.im*other.im,
+                this.re*other.im + this.im*other.re
+            );
+        }
+        toString() {
+            let outStr = '';
+            if (this.re !== 0) { outStr += `${this.re}`; }
+            if (this.re !== 0 && this.im !== 0 && this.im > 0) { outStr += '+'; }
+            if (this.im !== 0) { outStr += `${this.im}i`; }
+            if (outStr === '') { outStr = '0'; }
+            return outStr;
+        }
+    }
+    const Cmx = Complex;
+    const i = (im) => new Complex(0,1*(im||1));
+
+    class Qubit {
+        constructor() {
+            this.a = new Complex(0,0);
+            this.b = new Complex(1,0);
+        }
+        set prob(value) {
+            if (value < 0 || value > 1) { throw 'invalid input'; }
+            console.log('  Setting Prob to: ', value);
+
+            const aNorm = Math.sqrt(this.a.mod_sqr);
+            const bNorm = Math.sqrt(this.b.mod_sqr);
+            if (aNorm !== 0 && bNorm !== 0) {
+                this.a = this.a.times((1-value)/aNorm);
+                this.b = this.b.times(value/bNorm);
+            } else {
+                this.a = new Cmx((1-value),0);
+                this.b = new Cmx(value,0);
+            }
+            this.normalize();
+        }
+        get prob() {
+            return this.a.times(this.a.conj).re;
+        }
+        get phase_rad() {
+            const theta = Math.atan(this.b.mod_sqr / this.a.mod_sqr);
+            const relativePhaseTerm = this.b.times(1/Math.sin(theta/2));
+            console.log('one: ', Math.acos(relativePhaseTerm.re));
+            console.log('two: ', Math.asin(relativePhaseTerm.im));
+            return Math.acos(relativePhaseTerm.re);
+        }
+        get phase_deg() {
+            return this.phase_rad * 180/ Math.PI
+        }
+        normalize() {
+            // console.log('before normalizing: ', this.a.toString(), this.b.toString());
+            if (this.a.im !== 0) {
+                const phaseNorm = this.a.conj;
+                this.a = this.a.times(phaseNorm);
+                this.b = this.b.times(phaseNorm);
+                // console.log('after PHASE normalizing: ', this.a.toString(), this.b.toString());
+            }
+            const norm = 1/Math.sqrt(this.a.mod_sqr + this.b.mod_sqr);
+            // console.log(' normalizing factor: ', norm);
+            this.a = this.a.times(norm);
+            this.b = this.b.times(norm);
+            // console.log('after normalizing: ', this.a.toString(), this.b.toString());
+            console.log(this.toString());
+            return this;
+        }
+        toString() {
+            return `${this.a.toString()} |0> + ${this.b.toString()} |1>`;
+        }
+    }
+
+    class Gate {
+        constructor(arr) {
+            this.arr = [];
+            arr.forEach((el, i) => {
+                this.arr[i] = (typeof el === Complex) ? el : new Complex(el, 0);
+            });
+            this.arity = 1;
+        }
+        at(x,y) {
+            const width = this.arity*2;
+            return this.arr[Math.floor(x/(width-1))+y*(width)];
+        }
+        print() {
+            const a = this.arr;
+            console.table(
+                [
+                    [a[0].toString(),a[1].toString()],
+                    [a[2].toString(),a[3].toString()]
+                ]);
+        }
+    }
+    const pauliX = new Gate([0, i(-1), i(), 0]);
+
+    let qubit = new Qubit();
+    qubit.prob = 0.5;
+    qubit.a.im = -1;
+    qubit.normalize();
+    alphaSlider.value = qubit.prob*alphaSliderMax;
+
+    function updateAlpha() {
+        qubit.prob = alphaSlider.value/alphaSliderMax;
+        drawQubit();
+    }
+    function updatePhase() {
+        // qubit.im = alphaSlider.value;
+        drawQubit();
+    }
+
+    function drawQubit() {
+        const qx = 100;
+        const qy = 100;
+        const diameter = 50;
+        const r = 0.5*diameter;
+        const phaseDrawOffset = 0.5*Math.PI;
+        const phase = phaseSlider.value;
+
+        const alphaExpecation = Math.sqrt(qubit.a.mod_sqr);
+        const betaExpectation = Math.sqrt(qubit.b.mod_sqr);
+        const rad = Math.atan(alphaExpecation / betaExpectation);
+        const deg1 = -rad * 180/ Math.PI;
+        const deg2 = deg1;
+        console.log(qubit.phase_rad);
+
+        ctx.globalAlpha = 0.8;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // ctx.beginPath();
+        // ctx.arc(qx, qy+r, r, 0, 2*Math.PI);
+        // ctx.stroke();
+
+        ctx.fillStyle = "black";
+        ctx.translate(qx, qy);
+        ctx.rotate(deg1 * Math.PI/180);
+        ctx.fillRect(0, 0, diameter*betaExpectation, diameter*betaExpectation);
+        ctx.rotate(-deg1 * Math.PI/180);
+        ctx.translate(-qx, -qy);
+
+        ctx.fillStyle = "grey";
+        ctx.translate(qx, qy+diameter);
+        ctx.rotate(deg2 * Math.PI/180);
+        ctx.fillRect(0, 0, diameter*alphaExpecation, diameter*alphaExpecation);
+        ctx.rotate(-deg2 * Math.PI/180);
+        ctx.translate(-qx, -qy-diameter);
+
+        ctx.fillStyle = "#c82124"; //dark red
+        ctx.beginPath();
+        ctx.moveTo(qx,qy+r);
+        ctx.arc(qx,qy+r, r, phaseDrawOffset, phaseDrawOffset+phase*Math.PI/180);
+        ctx.lineTo(qx,qy+r);
+        ctx.closePath();
+        ctx.fill();
+    }
+    drawQubit();
+</script>
+</html>
