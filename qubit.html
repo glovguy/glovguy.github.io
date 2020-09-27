@@ -55,9 +55,15 @@
 
   class Qubit {
     constructor() {
+      this.mat = new Matrix([0,0], [1,2]);
       this.a = new Complex(0,0);
       this.b = new Complex(1,0);
     }
+    get a() { return this.mat[0]; }
+    set a(n) { this.mat[0] = n; }
+    get b() { return this.mat[1]; }
+    set b(n) { this.mat[1] = n; }
+    get dim() { return [2,1]; }
     set prob(value) {
       if (value < 0 || value > 1) { throw 'invalid input'; }
       const aNorm = Math.sqrt(this.a.mod_sqr);
@@ -135,25 +141,79 @@
           }
           toString() {
             let betaString = this.b.toString();
-            if (this.b.re !== 0 && this.b.im) {
+            if (this.b.re !== 0 || this.b.im !== 0) {
               betaString = '(' + betaString + ')';
             }
             return `${this.a.toString()} |0⟩ + ${betaString} |1⟩`;
           }
         }
 
-        class Gate {
-          constructor(arr) {
+        class Matrix {
+          constructor(arr, dim) {
+            this.nRows = dim[0];
+            this.nCols = dim[1];
             this.arr = [];
             arr.forEach((el, i) => {
               this.arr[i] = (typeof el === Complex) ? el : new Complex(el, 0);
             });
-            this.arity = 1;
+          }
+          get dim() {
+            return [this.nRows,this.nCols];
+          }
+          clear() {
+            const l = this.nRows*this.nCols;
+            for (let ii=0; ii<l; ii++) {
+              this.arr[ii] = new Complex(0,0);
+            }
+            return this;
+          }
+          add_constant(c) {
+            return new Gate(this.arr.map(el => el+c));
+          }
+          add(other) {
+            if (!(other instanceof Gate)) { return this.add_constant(other); }
+            if (this.arity !== other.arity) { throw('incompatible matrices'); }
+            return new Gate(this.arr.map((el, i) => el.add(other.arr[i])));
+          }
+          times_constant(c) {
+            return new Gate(this.arr.map(el => el*c));
+          }
+          times(other) {
+            if (!(other instanceof Matrix)) { return this.times_constant(other); }
+            const newDims = [this.nRows, other.nCols];
+            const newMat = new Matrix([],newDims).clear();
+            for (let ii=0; ii<newDims[1]; ii++) { // whoops
+              for (let j=0; j<newDims[0]; j++) {
+                for (let n=0; n<this.nCols; n++) {
+                  const v = this.at(ii,n).times(other.at(n,j));
+                  const value = v.add(newMat.at(ii,j));
+                  newMat.setAt(value,ii,j);
+                }
+              }
+            }
+            return newMat;
           }
           at(x,y) {
-            const width = this.arity*2;
+            const width = this.nCols;
             return this.arr[Math.floor(x/(width-1))+y*(width)];
           }
+          setAt(value,x,y) {
+            const width = this.nCols;
+            this.arr[Math.floor(x/(width-1))+y*(width)] = value;
+          }
+        }
+
+        class Gate extends Matrix {
+          constructor(arr) {
+            super(arr, [2,2]);
+
+            this.arity = 1;
+          }
+          get dim() {
+            const d = this.arity*4;
+            return [d,d];
+          }
+
           print() {
             const a = this.arr;
             console.table(
@@ -163,7 +223,11 @@
               ]);
           }
         }
-        const pauliX = new Gate([0, i(-1), i(), 0]);
+        const I = new Matrix([1,0,0,1], [2,2]);
+        const pauliX = new Gate([0, 1, 1, 0]);
+        const pauliY = new Gate([0, i(-1), i(), 0]);
+        const pauliZ = new Gate([1, 0, 0, -1]);
+        const Had = pauliX.add(pauliZ).times(1/Math.sqrt(2));
 
         let qubit = new Qubit();
         qubit.prob = 0.5;
