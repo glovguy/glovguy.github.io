@@ -85,209 +85,209 @@
       const q2 = this.b.re < 0 && this.b.im >= 0;
       const q3 = this.b.re < 0 && this.b.im < 0;
       const q4 = this.b.re >= 0 && this.b.im < 0;
-            // console.log(' Q ', q1, q2, q3, q4);
-            const opp = (q1||q3) ? Math.abs(this.b.im) : Math.abs(this.b.re);
-            const adj = (q1||q3) ? Math.abs(this.b.re) : Math.abs(this.b.im);
-            let phi = Math.atan(opp / adj);
-            if (q2) { phi += Math.PI/2; }
-            if (q3) { phi += Math.PI; }
-            if (q4) { phi += (Math.PI*3)/2; }
-            return phi;
-          }
-          set phase_rad(rad) {
-            let _rad = rad;
-            const q1 = rad <= Math.PI/2;
-            const q2 = rad > Math.PI/2 && rad <= Math.PI;
-            const q3 = rad > Math.PI && rad <= Math.PI*(3/2);
-            const q4 = rad > Math.PI*(3/2);
-            const magnitude = Math.sqrt(this.b.mod_sqr);
-            if (q2) { _rad = rad - Math.PI/2; }
-            if (q3) { _rad = rad - Math.PI; }
-            if (q4) { _rad = rad - (Math.PI*3)/2; }
-            let ratio = Math.tan(_rad);
-            if (ratio >= 1) { ratio = 1/ratio;}
-            const opp = Math.sin(_rad);
-            const adj = Math.cos(_rad);
-            if (q1) {
-              this.b.re = magnitude*adj;
-              this.b.im = magnitude*opp;
-            } else if (q2) {
-              this.b.re = -magnitude*opp;
-              this.b.im = magnitude*adj;
-            } else if (q3) {
-              this.b.re = -magnitude*adj;
-              this.b.im = -magnitude*opp;
-            } else {
-              this.b.re = magnitude*opp;
-              this.b.im = -magnitude*adj;
-            }
-          }
-          get phase_deg() {
-            return this.phase_rad * 180/ Math.PI
-          }
-          set phase_deg(deg) {
-            this.phase_rad = deg*(Math.PI/180);
-          }
-          normalize() {
-            if (this.a.im !== 0) {
-              const phaseNorm = this.a.conj;
-              this.a = this.a.times(phaseNorm);
-              this.b = this.b.times(phaseNorm);
-            }
-            const norm = 1/Math.sqrt(this.a.mod_sqr + this.b.mod_sqr);
-            this.a = this.a.times(norm);
-            this.b = this.b.times(norm);
-            return this;
-          }
-          toString() {
-            let betaString = this.b.toString();
-            if (this.b.re !== 0 || this.b.im !== 0) {
-              betaString = '(' + betaString + ')';
-            }
-            return `${this.a.toString()} |0⟩ + ${betaString} |1⟩`;
-          }
-        }
-
-        class Matrix {
-          constructor(arr, dim) {
-            this.nRows = dim[0];
-            this.nCols = dim[1];
-            this.arr = [];
-            arr.forEach((el, i) => {
-              this.arr[i] = (typeof el === Complex) ? el : new Complex(el, 0);
-            });
-          }
-          get dim() {
-            return [this.nRows,this.nCols];
-          }
-          clear() {
-            const l = this.nRows*this.nCols;
-            for (let ii=0; ii<l; ii++) {
-              this.arr[ii] = new Complex(0,0);
-            }
-            return this;
-          }
-          add_constant(c) {
-            return new Gate(this.arr.map(el => el+c));
-          }
-          add(other) {
-            if (!(other instanceof Gate)) { return this.add_constant(other); }
-            if (this.arity !== other.arity) { throw('incompatible matrices'); }
-            return new Gate(this.arr.map((el, i) => el.add(other.arr[i])));
-          }
-          times_constant(c) {
-            return new Gate(this.arr.map(el => el*c));
-          }
-          times(other) {
-            if (!(other instanceof Matrix)) { return this.times_constant(other); }
-            const newDims = [this.nRows, other.nCols];
-            const newMat = new Matrix([],newDims).clear();
-            for (let ii=0; ii<newDims[1]; ii++) { // whoops
-              for (let j=0; j<newDims[0]; j++) {
-                for (let n=0; n<this.nCols; n++) {
-                  const v = this.at(ii,n).times(other.at(n,j));
-                  const value = v.add(newMat.at(ii,j));
-                  newMat.setAt(value,ii,j);
-                }
-              }
-            }
-            return newMat;
-          }
-          at(x,y) {
-            const width = this.nCols;
-            return this.arr[Math.floor(x/(width-1))+y*(width)];
-          }
-          setAt(value,x,y) {
-            const width = this.nCols;
-            this.arr[Math.floor(x/(width-1))+y*(width)] = value;
-          }
-        }
-
-        class Gate extends Matrix {
-          constructor(arr) {
-            super(arr, [2,2]);
-
-            this.arity = 1;
-          }
-          get dim() {
-            const d = this.arity*4;
-            return [d,d];
-          }
-
-          print() {
-            const a = this.arr;
-            console.table(
-              [
-              [a[0].toString(),a[1].toString()],
-              [a[2].toString(),a[3].toString()]
-              ]);
-          }
-        }
-        const I = new Matrix([1,0,0,1], [2,2]);
-        const pauliX = new Gate([0, 1, 1, 0]);
-        const pauliY = new Gate([0, i(-1), i(), 0]);
-        const pauliZ = new Gate([1, 0, 0, -1]);
-        const Had = pauliX.add(pauliZ).times(1/Math.sqrt(2));
-
-        let qubit = new Qubit();
-        qubit.prob = 0.5;
-        qubit.a.im = -1;
-        qubit.normalize();
-        alphaSlider.value = qubit.prob*alphaSliderMax;
-
-        function updateAlpha() {
-          qubit.prob = alphaSlider.value/alphaSliderMax;
-          drawQubit();
-        }
-        function updatePhase() {
-          qubit.phase_deg = phaseSlider.value;
-          drawQubit();
-        }
-
-        function drawQubit() {
-          const qx = 100;
-          const qy = 100;
-          const diameter = 50;
-          const r = 0.5*diameter;
-          const phaseDrawOffset = 0.5*Math.PI;
-          const phase = qubit.phase_rad;
-
-          const alphaExpecation = Math.sqrt(qubit.a.mod_sqr);
-          const betaExpectation = Math.sqrt(qubit.b.mod_sqr);
-          const rad = Math.atan(alphaExpecation / betaExpectation);
-          const deg1 = -rad * 180/ Math.PI;
-          const deg2 = deg1;
-
-          qubitDisplaySpan.innerHTML = qubit.toString();
-
-          ctx.globalAlpha = 0.8;
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          ctx.beginPath();
-          ctx.arc(qx, qy+r, r, 0, 2*Math.PI);
-          ctx.stroke();
-
-        ctx.fillStyle = "black";// "#E19720";
-        ctx.translate(qx, qy);
-        ctx.rotate(deg1 * Math.PI/180);
-        ctx.fillRect(0, 0, diameter*betaExpectation, diameter*betaExpectation);
-        ctx.rotate(-deg1 * Math.PI/180);
-        ctx.translate(-qx, -qy);
-
-        ctx.fillStyle = "grey"; // "#FAD61D";
-        ctx.translate(qx, qy+diameter);
-        ctx.rotate(deg2 * Math.PI/180);
-        ctx.fillRect(0, 0, diameter*alphaExpecation, diameter*alphaExpecation);
-        ctx.rotate(-deg2 * Math.PI/180);
-        ctx.translate(-qx, -qy-diameter);
-
-        ctx.fillStyle = "#c82124"; // dark red
-        ctx.beginPath();
-        ctx.moveTo(qx,qy+r);
-        ctx.arc(qx,qy+r, r, phaseDrawOffset, phaseDrawOffset+phase);
-        ctx.lineTo(qx,qy+r);
-        ctx.closePath();
-        ctx.fill();
+      // console.log(' Q ', q1, q2, q3, q4);
+      const opp = (q1||q3) ? Math.abs(this.b.im) : Math.abs(this.b.re);
+      const adj = (q1||q3) ? Math.abs(this.b.re) : Math.abs(this.b.im);
+      let phi = Math.atan(opp / adj);
+      if (q2) { phi += Math.PI/2; }
+      if (q3) { phi += Math.PI; }
+      if (q4) { phi += (Math.PI*3)/2; }
+      return phi;
+    }
+    set phase_rad(rad) {
+      let _rad = rad;
+      const q1 = rad <= Math.PI/2;
+      const q2 = rad > Math.PI/2 && rad <= Math.PI;
+      const q3 = rad > Math.PI && rad <= Math.PI*(3/2);
+      const q4 = rad > Math.PI*(3/2);
+      const magnitude = Math.sqrt(this.b.mod_sqr);
+      if (q2) { _rad = rad - Math.PI/2; }
+      if (q3) { _rad = rad - Math.PI; }
+      if (q4) { _rad = rad - (Math.PI*3)/2; }
+      let ratio = Math.tan(_rad);
+      if (ratio >= 1) { ratio = 1/ratio;}
+      const opp = Math.sin(_rad);
+      const adj = Math.cos(_rad);
+      if (q1) {
+        this.b.re = magnitude*adj;
+        this.b.im = magnitude*opp;
+      } else if (q2) {
+        this.b.re = -magnitude*opp;
+        this.b.im = magnitude*adj;
+      } else if (q3) {
+        this.b.re = -magnitude*adj;
+        this.b.im = -magnitude*opp;
+      } else {
+        this.b.re = magnitude*opp;
+        this.b.im = -magnitude*adj;
       }
-      drawQubit();
-    </script>
-    </html>
+    }
+    get phase_deg() {
+      return this.phase_rad * 180/ Math.PI
+    }
+    set phase_deg(deg) {
+      this.phase_rad = deg*(Math.PI/180);
+    }
+    normalize() {
+      if (this.a.im !== 0) {
+        const phaseNorm = this.a.conj;
+        this.a = this.a.times(phaseNorm);
+        this.b = this.b.times(phaseNorm);
+      }
+      const norm = 1/Math.sqrt(this.a.mod_sqr + this.b.mod_sqr);
+      this.a = this.a.times(norm);
+      this.b = this.b.times(norm);
+      return this;
+    }
+    toString() {
+      let betaString = this.b.toString();
+      if (this.b.re !== 0 || this.b.im !== 0) {
+        betaString = '(' + betaString + ')';
+      }
+      return `${this.a.toString()} |0⟩ + ${betaString} |1⟩`;
+    }
+  }
+
+  class Matrix {
+    constructor(arr, dim) {
+      this.nRows = dim[0];
+      this.nCols = dim[1];
+      this.arr = [];
+      arr.forEach((el, i) => {
+        this.arr[i] = (typeof el === Complex) ? el : new Complex(el, 0);
+      });
+    }
+    get dim() {
+      return [this.nRows,this.nCols];
+    }
+    clear() {
+      const l = this.nRows*this.nCols;
+      for (let ii=0; ii<l; ii++) {
+        this.arr[ii] = new Complex(0,0);
+      }
+      return this;
+    }
+    add_constant(c) {
+      return new Gate(this.arr.map(el => el+c));
+    }
+    add(other) {
+      if (!(other instanceof Gate)) { return this.add_constant(other); }
+      if (this.arity !== other.arity) { throw('incompatible matrices'); }
+      return new Gate(this.arr.map((el, i) => el.add(other.arr[i])));
+    }
+    times_constant(c) {
+      return new Gate(this.arr.map(el => el*c));
+    }
+    times(other) {
+      if (!(other instanceof Matrix)) { return this.times_constant(other); }
+      const newDims = [this.nRows, other.nCols];
+      const newMat = new Matrix([],newDims).clear();
+      for (let ii=0; ii<newDims[1]; ii++) { // whoops
+        for (let j=0; j<newDims[0]; j++) {
+          for (let n=0; n<this.nCols; n++) {
+            const v = this.at(ii,n).times(other.at(n,j));
+            const value = v.add(newMat.at(ii,j));
+            newMat.setAt(value,ii,j);
+          }
+        }
+      }
+      return newMat;
+    }
+    at(x,y) {
+      const width = this.nCols;
+      return this.arr[Math.floor(x/(width-1))+y*(width)];
+    }
+    setAt(value,x,y) {
+      const width = this.nCols;
+      this.arr[Math.floor(x/(width-1))+y*(width)] = value;
+    }
+  }
+
+  class Gate extends Matrix {
+    constructor(arr) {
+      super(arr, [2,2]);
+
+      this.arity = 1;
+    }
+    get dim() {
+      const d = this.arity*4;
+      return [d,d];
+    }
+
+    print() {
+      const a = this.arr;
+      console.table(
+        [
+        [a[0].toString(),a[1].toString()],
+        [a[2].toString(),a[3].toString()]
+        ]);
+    }
+  }
+  const I = new Matrix([1,0,0,1], [2,2]);
+  const pauliX = new Gate([0, 1, 1, 0]);
+  const pauliY = new Gate([0, i(-1), i(), 0]);
+  const pauliZ = new Gate([1, 0, 0, -1]);
+  const Had = pauliX.add(pauliZ).times(1/Math.sqrt(2));
+
+  let qubit = new Qubit();
+  qubit.prob = 0.5;
+  qubit.a.im = -1;
+  qubit.normalize();
+  alphaSlider.value = qubit.prob*alphaSliderMax;
+
+  function updateAlpha() {
+    qubit.prob = alphaSlider.value/alphaSliderMax;
+    drawQubit();
+  }
+  function updatePhase() {
+    qubit.phase_deg = phaseSlider.value;
+    drawQubit();
+  }
+
+  function drawQubit() {
+    const qx = 100;
+    const qy = 100;
+    const diameter = 50;
+    const r = 0.5*diameter;
+    const phaseDrawOffset = 0.5*Math.PI;
+    const phase = qubit.phase_rad;
+
+    const alphaExpecation = Math.sqrt(qubit.a.mod_sqr);
+    const betaExpectation = Math.sqrt(qubit.b.mod_sqr);
+    const rad = Math.atan(alphaExpecation / betaExpectation);
+    const deg1 = -rad * 180/ Math.PI;
+    const deg2 = deg1;
+
+    qubitDisplaySpan.innerHTML = qubit.toString();
+
+    ctx.globalAlpha = 0.8;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.beginPath();
+    ctx.arc(qx, qy+r, r, 0, 2*Math.PI);
+    ctx.stroke();
+
+    ctx.fillStyle = "black";// "#E19720";
+    ctx.translate(qx, qy);
+    ctx.rotate(deg1 * Math.PI/180);
+    ctx.fillRect(0, 0, diameter*betaExpectation, diameter*betaExpectation);
+    ctx.rotate(-deg1 * Math.PI/180);
+    ctx.translate(-qx, -qy);
+
+    ctx.fillStyle = "grey"; // "#FAD61D";
+    ctx.translate(qx, qy+diameter);
+    ctx.rotate(deg2 * Math.PI/180);
+    ctx.fillRect(0, 0, diameter*alphaExpecation, diameter*alphaExpecation);
+    ctx.rotate(-deg2 * Math.PI/180);
+    ctx.translate(-qx, -qy-diameter);
+
+    ctx.fillStyle = "#c82124"; // dark red
+    ctx.beginPath();
+    ctx.moveTo(qx,qy+r);
+    ctx.arc(qx,qy+r, r, phaseDrawOffset, phaseDrawOffset+phase);
+    ctx.lineTo(qx,qy+r);
+    ctx.closePath();
+    ctx.fill();
+  }
+  drawQubit();
+</script>
+</html>
