@@ -20,6 +20,7 @@
       this.re = re;
       this.im = im;
     }
+    eq(other) { return this.re === other.re && this.im === other.im; }
     get conj() {
       return new Complex(this.re, -this.im);
     }
@@ -55,10 +56,11 @@
 
   class Qubit {
     constructor() {
-      this.mat = new Matrix([0,0], [1,2]);
+      this.mat = new Matrix([0,0], [2,1]);
       this.a = new Complex(0,0);
       this.b = new Complex(1,0);
     }
+    eq(other) { return this.a === other.a && this.b === other.b; }
     get a() { return this.mat[0]; }
     set a(n) { this.mat[0] = n; }
     get b() { return this.mat[1]; }
@@ -85,7 +87,6 @@
       const q2 = this.b.re < 0 && this.b.im >= 0;
       const q3 = this.b.re < 0 && this.b.im < 0;
       const q4 = this.b.re >= 0 && this.b.im < 0;
-      // console.log(' Q ', q1, q2, q3, q4);
       const opp = (q1||q3) ? Math.abs(this.b.im) : Math.abs(this.b.re);
       const adj = (q1||q3) ? Math.abs(this.b.re) : Math.abs(this.b.im);
       let phi = Math.atan(opp / adj);
@@ -154,8 +155,13 @@
       this.nCols = dim[1];
       this.arr = [];
       arr.forEach((el, i) => {
-        this.arr[i] = (typeof el === Complex) ? el : new Complex(el, 0);
+        this.arr[i] = (el instanceof Complex) ? el : new Complex(el, 0);
       });
+    }
+    eq(other) {
+      return this.nRows === other.nRows &&
+        this.nCols === other.nCols &&
+        this.arr.every((el,i) => el.eq(other.arr[i]));
     }
     get dim() {
       return [this.nRows,this.nCols];
@@ -168,43 +174,64 @@
       return this;
     }
     add_constant(c) {
-      return new Gate(this.arr.map(el => el+c));
+      return new this.constructor(this.arr.map(el => el+c), this.dim);
     }
     add(other) {
-      if (!(other instanceof Gate)) { return this.add_constant(other); }
-      if (this.arity !== other.arity) { throw('incompatible matrices'); }
-      return new Gate(this.arr.map((el, i) => el.add(other.arr[i])));
+      if (!(other instanceof Matrix)) { return this.add_constant(other); }
+      if (this.nRows !== other.nRows || this.nCols !== other.nCols) { throw('incompatible matrices'); }
+      return new this.constructor(this.arr.map((el, i) => {
+        return el.add(other.arr[i]);
+      }), this.dim);
     }
     times_constant(c) {
-      return new Gate(this.arr.map(el => el*c));
+      return new this.constructor(this.arr.map(el => el.times(c)), this.dim);
     }
     times(other) {
       if (!(other instanceof Matrix)) { return this.times_constant(other); }
-      const newDims = [this.nRows, other.nCols];
-      const newMat = new Matrix([],newDims).clear();
-      for (let ii=0; ii<newDims[1]; ii++) { // whoops
-        for (let j=0; j<newDims[0]; j++) {
-          for (let n=0; n<this.nCols; n++) {
-            const v = this.at(ii,n).times(other.at(n,j));
-            const value = v.add(newMat.at(ii,j));
-            newMat.setAt(value,ii,j);
+      if (this.nCols !== other.nRows) { throw('Cannot multiply these two matrices'); }
+      const aRows = this.nRows;
+      const aCols = this.nCols;
+      const bCols = other.nCols;
+      const newMat = new this.constructor([],[aRows,bCols]).clear();
+      for (let r=0; r<aRows; r++) {
+        for (let c=0; c<bCols; c++) {
+          for (let n=0; n<aCols; n++) {
+            const v = this.at(r,n).times(other.at(n,c));
+            const value = v.add(newMat.at(r,c));
+            newMat.set_at(value,r,c);
           }
         }
       }
       return newMat;
     }
-    at(x,y) {
-      const width = this.nCols;
-      return this.arr[Math.floor(x/(width-1))+y*(width)];
+    arr_index(r,c) { return Math.floor(c*this.nRows)+r; }
+    at(r,c) {
+      const idx = this.arr_index(r,c);
+      return this.arr[idx];
     }
-    setAt(value,x,y) {
-      const width = this.nCols;
-      this.arr[Math.floor(x/(width-1))+y*(width)] = value;
+    set_at(value,r,c) {
+      const idx = this.arr_index(r,c);
+      this.arr[idx] = value;
+    }
+    print() {
+      const a = this.arr;
+      const nC = this.nCols;
+      const outArr = [];
+      for (let r=0; r<this.nRows; r++) {
+        const eachRow = [];
+        for (let c=0; c<this.nCols; c++) {
+          eachRow.push(this.at(r,c).toString());
+        }
+        outArr.push(eachRow);
+      }
+      console.table(outArr);
     }
   }
 
   class Gate extends Matrix {
-    constructor(arr) {
+    constructor(arr,dims) {
+      // console.log(dims)
+      // if (dims !== undefined && dims !== [2,2]) { throw('Invalid Gate init'); }
       super(arr, [2,2]);
 
       this.arity = 1;
@@ -213,21 +240,18 @@
       const d = this.arity*4;
       return [d,d];
     }
-
-    print() {
-      const a = this.arr;
-      console.table(
-        [
-        [a[0].toString(),a[1].toString()],
-        [a[2].toString(),a[3].toString()]
-        ]);
-    }
   }
   const I = new Matrix([1,0,0,1], [2,2]);
   const pauliX = new Gate([0, 1, 1, 0]);
   const pauliY = new Gate([0, i(-1), i(), 0]);
   const pauliZ = new Gate([1, 0, 0, -1]);
   const Had = pauliX.add(pauliZ).times(1/Math.sqrt(2));
+
+  const myCustomRotation = pauliX.times(0.05).add(
+    pauliY.times(0.1)
+  ).add(
+    new Gate(I.arr).times(0.85)
+  );
 
   let qubit = new Qubit();
   qubit.prob = 0.5;
@@ -289,5 +313,48 @@
     ctx.fill();
   }
   drawQubit();
+
+  window.requestAnimFrame = (function(callback){
+    return  window.requestAnimationFrame  ||
+      window.webkitRequestAnimationFrame  ||
+      window.mozRequestAnimationFrame     ||
+      function(callback){
+        window.setTimeout(callback, 20);
+      };
+  })();
+
+  // const myTick = () => {
+  //   console.log('tick')
+  //   qubit.mat = qubit.mat.times(myCustomRotation);
+  //   drawQubit();
+  //   requestAnimFrame(myTick);
+  // }
+  // requestAnimFrame(myTick);
+</script>
+
+<script>
+  // Matrix equality
+  console.assert(
+    new Matrix([new Cmx(1,0)],[1,1]).eq(new Matrix([new Cmx(1,0)],[1,1]))
+  );
+  console.assert(
+    new Matrix([new Cmx(1,0), new Cmx(2,0)],[2,1]).eq(new Matrix([new Cmx(1,0), new Cmx(2,0)],[2,1]))
+  );
+  console.assert(new Matrix([new Cmx(1,0),i()],[1,2]).eq(new Matrix([new Cmx(1,0),i()],[1,2])))
+
+  // Matrix add to other matrices
+  console.assert(I.add(I).eq(I.add(I)));
+  console.assert(
+    (I.add(new Matrix([34,45,56,76], [2,2]))).eq(
+    new Matrix([new Cmx(35,0),new Cmx(45,0),new Cmx(56,0),new Cmx(77,0)], [2,2]))
+  );
+
+  // Matrix multiplication with other matrices
+  const testMatA = new Matrix([1,0,0,3,-2,-1],[2,3]);
+  const testMatB = new Matrix([0,-2,0,3,-1,4],[3,2]);
+  const resultMat = new Matrix([0,-6,-5,-7],[2,2]);
+  console.assert(testMatA.times(testMatB).eq(resultMat));
+  console.assert((I.times(I)).eq(I));
+  console.assert((new Matrix([new Cmx(1,0),i()],[1,2]).times(I)).eq(new Matrix([new Cmx(1,0),i()],[1,2])))
 </script>
 </html>
