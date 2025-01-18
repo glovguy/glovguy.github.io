@@ -1,0 +1,18 @@
+---
+layout: default
+title: Demos
+permalink: /demos/
+---
+
+<h1>Demos</h1>
+
+<ul>
+  {% for demo in site.demos %}
+    <li>
+      <a href="{{ demo.url }}">{{ demo.title }}</a>
+    </li>
+  {% endfor %}
+  <li>
+    <a href="/demos/qubit.html">Qubit Demo</a>
+  </li>
+</ul>
